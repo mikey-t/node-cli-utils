@@ -31,7 +31,7 @@ New source files need to be referenced in `c8rc.json` to get code coverage analy
 ## Change Release Checklist
 
 - Bump version in package.json
-- (optional) `swig publishCheck` (⚠️Requires admin shell - takes about 1:15 if sonar isn't up yet)
+- (optional) `swig publishCheck` (⚠️ Requires admin shell - takes about 1:15 if sonar isn't up yet)
     - Runs lint
     - Runs build (esm and cjs)
     - Runs all tests (including integration tests, tar tests and cert tests)
@@ -39,11 +39,11 @@ New source files need to be referenced in `c8rc.json` to get code coverage analy
     - Starts docker
     - Stars SonarQube (and waits for it to be ready)
     - Runs sonar scan
-- `swig publish`
+- `swig publish` (⚠️ It's required to first manually run `npm login`)
     - Runs lint and build
     - Runs subset of tests ("normal" tests only)
     - Runs npm publish command (it will prompt for multi-factor auth)
-- (optional) `swig publishDocs`
+- (optional) `swig publishDocs` (⚠️ It's required to first manually run `npm login`)
     - Requires that you have the `node-cli-utils-docs` repo cloned as a sibling to this project repo on your machine
     - Runs the command to generate new docs (with the output being `../node-cli-utils-docs/docs`, which is configured in the `typedoc.json` file)
     - Uses the tsconfig.esm.json file

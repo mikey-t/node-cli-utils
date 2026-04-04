@@ -252,7 +252,7 @@ export async function isDockerRunning(): Promise<boolean> {
       await simpleSpawnAsync('wsl', ['docker', 'info']) :
       await simpleSpawnAsync('docker', ['info'])
     return result.code === 0 && !result.stdout.includes('error during connect')
-  } catch (err) {
+  } catch {
     return false
   }
 }

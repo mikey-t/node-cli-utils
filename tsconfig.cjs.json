@@ -5,6 +5,7 @@
     "declaration": true,
     "declarationMap": true,
     "inlineSourceMap": true,
+    "rootDir": "./src",
     "outDir": "./dist/cjs",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
@@ -13,7 +14,11 @@
     "skipLibCheck": true,
     "lib": [
       "ES2018",
-      "ES2021.String"
+      "ES2021.String",
+      "ES2022"
+    ],
+    "types": [
+      "node"
     ],
   },
   "include": [
@@ -24,6 +29,7 @@
     "coverage",
     "dist",
     "node_modules",
-    "test"
+    "test",
+    "scratch"
   ]
 }

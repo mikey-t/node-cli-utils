@@ -7,7 +7,7 @@ import { config } from './NodeCliUtilsConfig.js'
 const DEV_LOGGING = false // Set to true while developing this script to see more logging in the console
 let loggingEnabled = true // Will be set below by process.argv[2] === 'true' from spawnAsync in generalUtils.js
 let traceEnabled = true // Will be set below by process.argv[3] === 'true' from spawnAsync in generalUtils.js
-let pollingMillis: number = config.orphanProtectionPollingIntervalMillis // Will be set by process.argv[4] from spawnAsync in generalUtils.js
+let pollingMillis: number // Will be set by process.argv[4] from spawnAsync in generalUtils.js, or default to config value
 
 function getLogPrefix() {
   const now = new Date()

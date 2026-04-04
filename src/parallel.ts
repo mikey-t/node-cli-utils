@@ -160,8 +160,6 @@ export interface RunParallelOptions<InputType> {
  * @param itemsToOperateOn The array of items of type `InputType` to operate on.
  * @param executorFunc The async function to call on each item in `itemsToOperateOn` - should return type `OutputType`.
  * @param isResultSuccessFunc The boolean returning function to evaluate whether each item of type `OutputType` returned should be considered successful.
- * @param skipCheckFunc An optional boolean async function to determine whether each item of type `InputType` should be operated on.
- * @param onlyFirstN Optional. Stop after this number of items processed.
  * @returns A {@link ParallelResult}
  */
 export async function runParallel<InputType, OutputType>(itemsToOperateOn: Iterable<InputType>, executorFunc: OperationExecutor<OutputType, InputType>, isResultSuccessFunc: SuccessChecker<OutputType>, options?: Partial<RunParallelOptions<InputType>>): Promise<ParallelResult<InputType, OutputType>> {
@@ -210,8 +208,8 @@ export async function runParallel<InputType, OutputType>(itemsToOperateOn: Itera
   return parallelResult
 }
 
-/** The return type of {@link ParallelExecutor.processQueue}. This is a generic wrapper for {@link Promise.allSettled} with results of type {@link ParallelItemResult}.
- * 
+/** 
+ * The return type of {@link ParallelExecutor.processQueue}. This is a generic wrapper for {@link Promise.allSettled} with results of type {@link ParallelItemResult}.
  * To filter the results, use type guards {@link isSettledRejected} and {@link isSettledFulfilled}.
 */
 export type AllSettledResult<ParallelItemResult> = Promise<PromiseSettledResult<Awaited<ParallelItemResult>>[]>

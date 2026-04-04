@@ -39,3 +39,9 @@ await spawnAsyncLongRunning(
 ## 2.0.34
 
 - Fixed bug where `simpleSpawnAsync` was not respecting the `throwOnNonZero` option when it is set to false.
+
+## 2.1.0
+
+- Removed all Volta references.
+- Removed axios dependency.
+- Updated dotnetUtils with new SDK versions and TFMs.

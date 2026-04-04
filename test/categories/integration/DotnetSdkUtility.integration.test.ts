@@ -3,21 +3,13 @@ import { describe, it } from 'node:test'
 import { DotnetSdkUtility } from '../../../src/DotnetSdkUtility.js'
 
 // Expected .net versions to be installed for integration tests
-const version6String = '6.0.421'
-const version8String = '8.0.204'
+const version8String = '8.0.419'
+const version10String = '10.0.201'
 
 describe('getInstalledSdkVersions', () => {
   it('returns expected versions', async () => {
     const versions = await new DotnetSdkUtility().getInstalledSdkVersions()
     assert.strictEqual(versions.length > 0, true, 'should have at least one version of dotnet installed')
-
-    const version6NumPatch = parseInt(version6String.split('.')[2])
-    const version6 = versions.find(v => v.full === version6String)
-
-    assert.ok(version6, `expected to have dotnet version ${version6String} installed`)
-    assert.strictEqual(version6.major, 6)
-    assert.strictEqual(version6.minor, 0)
-    assert.strictEqual(version6.patch, version6NumPatch)
 
     const version8NumPatch = parseInt(version8String.split('.')[2])
     const version8 = versions.find(v => v.full === version8String)
@@ -26,6 +18,14 @@ describe('getInstalledSdkVersions', () => {
     assert.strictEqual(version8.major, 8)
     assert.strictEqual(version8.minor, 0)
     assert.strictEqual(version8.patch, version8NumPatch)
+
+    const version10NumPatch = parseInt(version10String.split('.')[2])
+    const version10 = versions.find(v => v.full === version10String)
+
+    assert.ok(version10, `expected to have dotnet version ${version10String} installed`)
+    assert.strictEqual(version10.major, 10)
+    assert.strictEqual(version10.minor, 0)
+    assert.strictEqual(version10.patch, version10NumPatch)
   })
 })
 

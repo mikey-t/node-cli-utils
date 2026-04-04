@@ -14,7 +14,6 @@
     "types": [
       "node"
     ],
-    "baseUrl": "./",
     "resolveJsonModule": true,
     "noEmit": true
   },
@@ -29,9 +28,7 @@
     "dist",
     "node_modules",
     "test/fixtures",
-    "test/temp"
-  ],
-  "ts-node": {
-    "transpileOnly": true
-  }
+    "test/temp",
+    "scratch"
+  ]
 }

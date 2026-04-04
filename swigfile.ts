@@ -10,6 +10,7 @@ import { config } from './src/NodeCliUtilsConfig.js'
 import { ensureDockerRunning, spawnDockerCompose } from './src/dockerUtils.js'
 import { Emoji, copyNewEnvValues, emptyDirectory, findFilesRecursively, isPlatformWindows, log, spawnAsync, spawnAsyncLongRunning, trace, withRetryAsync } from './src/generalUtils.js'
 import { httpGet } from './src/generalUtilsInternal.js'
+import { nugetPackageCompatibilityList, NugetUtility } from './src/NugetUtility.js'
 
 config.traceEnabled = false
 
@@ -19,7 +20,6 @@ const eslintPath = './node_modules/eslint/bin/eslint.js'
 const typedocPath = './node_modules/typedoc/dist/lib/cli.js'
 const c8Path = './node_modules/c8/bin/c8.js'
 const loaderArgsTsx = ['--no-warnings', '--import', 'tsx']
-const loaderArgsTsNode = ['--no-warnings', '--experimental-loader', 'ts-node/esm'] // Needed ts-node instead of tsx for more accurate test coverage
 const dockerComposePath = './docker-compose.yml'
 const docsProjectPath = '../node-cli-utils-docs'
 const envKeySonarToken = 'SONAR_TOKEN'
@@ -30,7 +30,7 @@ export const buildEsmOnly = series(cleanDist, buildEsm)
 export const buildCjsOnly = series(cleanDist, buildCjs)
 
 export async function lint() {
-  await spawnAsync('node', [eslintPath, '--ext', '.ts', './src', './test', './swigfile.ts'], { throwOnNonZero: true })
+  await spawnAsync('node', [eslintPath, '--ext', '.ts', './src', './test', './swigfile.ts'])
 }
 
 // See DevNotes.md for documentation and examples
@@ -48,7 +48,7 @@ export async function test(fullOverride = false) {
     log(`  c            - collect test coverage`)
     return
   }
-  
+
   const normalTestFiles = await getTestFilesByCategory('normal')
   const integrationTestFiles = await getTestFilesByCategory('integration')
   const certTestFile = './test/categories/other/certUtils.test.ts'
@@ -85,8 +85,7 @@ export async function test(fullOverride = false) {
     log(`${Emoji.Warning} The coverage option (c) cannot be used with the watch option (w) - coverage will not be collected`)
   }
 
-  const loaderArgs = isCoverage && !isWatch ? loaderArgsTsNode : loaderArgsTsx
-  const args = [...loaderArgs, ...(isOnly ? ['--test-only'] : []), '--test', ...(isWatch ? ['--watch'] : []), ...testFiles]
+  const args = [...loaderArgsTsx, ...(isOnly ? ['--test-only'] : []), '--test', ...(isWatch ? ['--watch'] : []), ...testFiles]
 
   trace('test files:', testFiles)
 
@@ -170,7 +169,7 @@ export const publish = series(
   lint,
   build,
   test,
-  ['npmPublish', () => spawnAsync('npm', ['publish', '--registry=https://registry.npmjs.org/'], { throwOnNonZero: true })]
+  ['npmPublish', () => spawnAsync('npm', ['publish'])]
 )
 
 export const publishDocs = series(
@@ -178,14 +177,14 @@ export const publishDocs = series(
   lint,
   build,
   genDocs,
-  ['publishDocs', () => spawnAsync('swig', ['publish'], { throwOnNonZero: true, cwd: docsProjectPath })]
+  ['publishDocs', () => spawnAsync('swig', ['publish'], { cwd: docsProjectPath })]
 )
 
 export async function genDocs() {
   if (process.argv[2] === 'genDocs') {
     log(`${Emoji.Warning} This does not publish the docs. If you want to both build and publish docs with one command, run this instead: swig publishDocs`)
   }
-  await spawnAsync('node', [typedocPath], { throwOnNonZero: true })
+  await spawnAsync('node', [typedocPath])
 }
 
 export async function sonarHealth() {
@@ -197,11 +196,11 @@ export async function sonarHealth() {
   log(response)
 }
 
-// Run "npm pack" so that consuming project's package.json can reference the tarball like this:
+// Run "pnpm pack" so that consuming project's package.json can reference the tarball like this:
 // "@mikeyt23/node-cli-utils": "file:../node-cli-utils/mikeyt23-node-cli-utils-2.0.20.tgz"
-// Useful as an alternative to "npm link" for chaining multiple packages (which Volta doesn't seem to allow).
+// It's useful to reference packed version as an alternative to link chains between multiple projects
 export async function pack() {
-  await spawnAsync('npm', ['pack'], { throwOnNonZero: true })
+  await spawnAsync('pnpm', ['pack'])
 }
 
 // Repro issue where first time dotnet message breaks parsing of command output in getDotnetToolInstalledVersion function
@@ -224,7 +223,7 @@ async function syncEnvFile() {
 async function buildWithTsconfig(tsconfigFlavor: 'esm' | 'cjs') {
   const tsconfigName = `tsconfig.${tsconfigFlavor}.json`
   log(`Building with ${tsconfigName}`)
-  await spawnAsync('node', [tscPath, '--p', tsconfigName], { throwOnNonZero: true })
+  await spawnAsync('node', [tscPath, '--p', tsconfigName])
 }
 
 async function buildEsm() {
@@ -309,7 +308,7 @@ async function isSonarReady(): Promise<boolean> {
     }
 
     return true
-  } catch (err) {
+  } catch {
     return false
   }
 }
@@ -317,5 +316,20 @@ async function isSonarReady(): Promise<boolean> {
 async function throwIfSonarNotReady(): Promise<void> {
   if (!await isSonarReady()) {
     throw new Error(`Sonar is not ready`)
+  }
+}
+
+// Instead of using automated approach which would result in 429 rate limiting errors, generate URLs for nuget package landing pages and check manually when wanting to update. Use info to update NugetUtility.ts -> nugetPackageCompatibilityList. Obviously I'll want to re-think this whole scheme (research Nuget V3 query API or consider utilizing legacy V2 endpoints, or at least optimize and future-proof this current functionality).
+export async function generateNugetLandingUrls() {
+  const util = new NugetUtility()
+  const packageNames = Object.keys(nugetPackageCompatibilityList)
+  for (const packageName of packageNames) {
+    const allVersions = await util.getAllNugetVersions(packageName)
+    const latestMajors = util.getLatestMajorVersions(allVersions)
+    const sorted = [...latestMajors].sort((a, b) => b.major - a.major)
+    for (const version of sorted) {
+      log(`https://www.nuget.org/packages/${packageName}/${version.full}`)
+    }
+    log('---')
   }
 }

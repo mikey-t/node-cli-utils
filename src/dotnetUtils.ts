@@ -276,6 +276,7 @@ export async function configureDotnetDevCerts() {
 
 // This immutable const is used for the type guard.
 // There is also a non-immutable array to allow something like: const isValidTfm = targetFrameworkMonikers.includes(someStringVar)
+// See link on type TargetFrameworkMoniker
 const targetFrameworkMonikersImmutable = [
   'netcoreapp1.0',
   'netcoreapp1.1',
@@ -288,6 +289,8 @@ const targetFrameworkMonikersImmutable = [
   'net6.0',
   'net7.0',
   'net8.0',
+  'net9.0',
+  'net10.0',
   'netstandard1.0',
   'netstandard1.1',
   'netstandard1.2',
@@ -346,7 +349,23 @@ const targetFrameworkMonikersImmutable = [
   'net8.0-maccatalyst',
   'net8.0-macos',
   'net8.0-tvos',
-  'net8.0-windows'
+  'net8.0-windows',
+  'net9.0-android',
+  'net9.0-browser',
+  'net9.0-ios',
+  'net9.0-maccatalyst',
+  'net9.0-macos',
+  'net9.0-tizen',
+  'net9.0-tvos',
+  'net9.0-windows',
+  'net10.0-android',
+  'net10.0-browser',
+  'net10.0-ios',
+  'net10.0-maccatalyst',
+  'net10.0-macos',
+  'net10.0-tizen',
+  'net10.0-tvos',
+  'net10.0-windows'
 ] as const
 
 /**
@@ -376,7 +395,9 @@ const dotnetCoreTargetFrameworkMonikersImmutable = [
   'net5.0',
   'net6.0',
   'net7.0',
-  'net8.0'
+  'net8.0',
+  'net9.0',
+  'net10.0'
 ] as const
 
 /**

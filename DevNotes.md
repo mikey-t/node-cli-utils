@@ -2,6 +2,28 @@
 
 Writing down reminders and things I learned for future projects.
 
+- [DevNotes for node-cli-utils](#devnotes-for-node-cli-utils)
+  - [Reminders](#reminders)
+  - [Change Release Checklist](#change-release-checklist)
+  - [Local Npm Package Testing](#local-npm-package-testing)
+  - [Unit Test Notes](#unit-test-notes)
+    - [Test Command Notes](#test-command-notes)
+    - [Test Command Examples](#test-command-examples)
+    - [Test Framework and Test Execution](#test-framework-and-test-execution)
+    - [Misc Testing Notes](#misc-testing-notes)
+    - [Mocking Strategy (Dependency Injection)](#mocking-strategy-dependency-injection)
+    - [Test Coverage Report](#test-coverage-report)
+  - [Package Consumer Notes](#package-consumer-notes)
+    - [Enable Trace](#enable-trace)
+  - [Docker Desktop vs Daemon Only on Windows](#docker-desktop-vs-daemon-only-on-windows)
+  - [SonarQube Quality/Security Scanning](#sonarqube-qualitysecurity-scanning)
+  - [Updating API Docs](#updating-api-docs)
+  - [Reasoning](#reasoning)
+  - [NugetUtility Notes](#nugetutility-notes)
+  - [Noteworthy Features](#noteworthy-features)
+    - [Process Spawning Cross-Platform Workarounds](#process-spawning-cross-platform-workarounds)
+
+
 ## Reminders
 
 New source files need to be referenced in `c8rc.json` to get code coverage analysis.
@@ -29,6 +51,8 @@ New source files need to be referenced in `c8rc.json` to get code coverage analy
 
 ## Local Npm Package Testing
 
+TODO: update this section after experimenting with new tools/processes.
+
 Steps to link:
 
 - Check what is already linked: `npm ls --link=true`
@@ -44,7 +68,6 @@ Steps to unlink:
 - Within consuming package: `npm unlink @mikeyt23/node-cli-utils`
 - Within publishing package: `npm unlink`
 - Verify it's no longer linked: `npm ls --link=true`
-- Add the package back if it was removed by the unlink command (different behavior with and without Volta?): `npm i -D @mikeyt23/node-cli-utils`
 
 ## Unit Test Notes
 
@@ -54,21 +77,21 @@ Testing is wired up through the swig task called `test`. Test files are grouped 
 
 Test category params:
 
-| Param | Notes |
-| ----- | ----- |
-| `n` | Normal tests. These will also be run if no other tests are specified. |
-| `i` | Integration tests. These will make live http calls to third parties and run real system commands. |
-| `tar` | Tarball tests that call actual system tar command. Adds 5-10 seconds. |
-| `cert` | Cert tests. ⚠️Requires windows elevated prompt. ⚠️Windows only. Adds 20+ seconds. |
+| Param  | Notes                                                                                             |
+| ------ | ------------------------------------------------------------------------------------------------- |
+| `n`    | Normal tests. These will also be run if no other tests are specified.                             |
+| `i`    | Integration tests. These will make live http calls to third parties and run real system commands. |
+| `tar`  | Tarball tests that call actual system tar command. Adds 5-10 seconds.                             |
+| `cert` | Cert tests. ⚠️Requires windows elevated prompt. ⚠️Windows only. Adds 20+ seconds.                   |
 
 Special params:
 
-| Param | Notes |
-| ----- | ----- |
+| Param  | Notes                                                                                                                                    |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `full` | Runs all tests including cert, tar and integration tests. Collects code coverage data. ⚠️Requires windows elevated prompt. ⚠️Windows only. |
-| `o` | Tests marked as "only" in the NodeJS test runner style: `{ only : true }` |
-| `c` | Collect code coverage data and output to `./coverage`. An html report will be generated at `./coverage/lcov-report/index.html`. |
-| `w` | Run tests in watch mode for hot reload functionality. |
+| `o`    | Tests marked as "only" in the NodeJS test runner style: `{ only : true }`                                                                |
+| `c`    | Collect code coverage data and output to `./coverage`. An html report will be generated at `./coverage/lcov-report/index.html`.          |
+| `w`    | Run tests in watch mode for hot reload functionality.                                                                                    |
 
 Misc test command notes:
 
@@ -124,9 +147,8 @@ I'm using [c8](https://github.com/bcoe/c8) for generating code coverage reports.
 - Added, removed or renamed test files need to be updated in both `swigfile.ts` and `.c8rc.json`
 - Generate a report by passing "c" to `swig test` (in addition to any other params wanted)
 - Html report is generated in the `./coverage` directory (entry point: `./coverage/index.html`)
-- I'm using `ts-node/esm` as the loader when running tests with code coverage because `tsx` was not generating accurate line numbers for uncovered lines (there's something wrong with it's source map functionality?). I'm using the tsconfig.json ts-node option "transpileOnly" in order to speed it up a little.
-- I'm still using `tsx` as the loader for running tests normally because it's slightly faster (even a little faster than ts-node with transpileOnly)
-- **Important:** Somewhat hilariously, c8 counts comments as lines of covered code, so adding comments increases percentage of coverage. Oof.
+- I was previously using `ts-node/esm` when running coverage because it seemed to be more accurate, but it no longer functions as of node 24, so I've removed that and am only running with `tsx`
+- Somewhat hilariously, c8 counts comments as lines of covered code, so adding comments increases percentage of coverage. Oof.
     - See https://github.com/bcoe/c8/issues/182
     - For now I'm ignoring the percentage and really just using the tool to tell me "number of uncovered lines", for which it's accurate
     - I may look into using some other tool if accuracy in the percentage numbers becomes more important to me
@@ -232,26 +254,61 @@ Misc notes on SonarQube setup:
 
 ## Reasoning
 
-NodeJS projects are out-of-control with the depth of their dependency trees. Rather than giving in to that trend, I'm attempting to maintain a collection of utilities using only built-in NodeJS functionality whenever possible, and only importing things when I simply can't easily reproduce the functionality myself. And when I do import a dependency, it will preferably be one with a shallow dependency tree.
+NodeJS projects are out-of-control with the depth of their dependency trees. Rather than giving in to that trend, I'm attempting to maintain a collection of utilities using only built-in NodeJS functionality whenever possible, and only importing dependencies when I can't easily reproduce the functionality myself. And when I do import a dependency, it will preferably be one with a shallow dependency tree.
 
-In some ways this is bad because I'm obviously re-inventing the wheel and there's other libraries that do some of this stuff way better. But here's what I'm getting by doing it this way:
+It's easy to argue that this solution isn't optimal, but there are some other reasons to re-invent the wheel sometimes:
 
-- Significantly less work to keep things up to date - I don't have to audit dozens or hundreds or thousands of dependency and transitive dependency updates on a regular basis
-- Significantly less (or zero) risk of NPM supply chain attacks
-- Getting more hands-on XP with the fundamentals of NodeJS Typescript development
-- Control. Do I know who to talk to for bug fixes or feature improvements? Of course I know him - he's me!
+- Sometimes counterintuitively, there's actually less work to keep things up to date because I don't have to audit dozens or hundreds or thousands of dependency and transitive dependency updates on a regular basis
+- Significantly less (close to zero) risk of NPM supply chain attacks (which are getting more common by the day)
+- Keeping NodeJS and Typescript skills up to date
+- Control - do I know who to talk to for bug fixes or feature improvements? Of course I know him - he's me!
 
-Originally I made an exception to this rule for [node-tar](https://github.com/isaacs/node-tar). However, I replaced this with a system call to the OS built-in `tar` utility since even Windows has this built-in since 2018.
+Originally I made an exception to this rule of no dependencies for [node-tar](https://github.com/isaacs/node-tar). However, I replaced this with a system call to the OS built-in `tar` utility since even Windows has this built-in since 2018.
 
-Also - just my personal opinion - every serious developer should create and maintain libraries like this. It's not always about reinventing the wheel or not. Sometimes it's about learning about different types of wheels by creating some yourself.
+Another package I included for a while was axios. I had a todo task for a long time to replace it, and the recent npm supply chain attack on it (April 2026) is what finally got that dependency removal task to the top of my list.
 
-Why one big package instead of smaller targeted packages? Smaller more focused packages would indeed be better, but only if I actually had time to maintain them all, which I don't. That decision will inevitably make this package a poor choice for most people for many reasons, but the benefit drastically outweighs the cost, in my opinion.
+## NugetUtility Notes
 
-## Semver
+TODO:
+  - Research the Nuget query API and/or utilization of legacy V2 endpoints
+  - If no better way is found, at least re-work this code to be more efficient to avoid 429 rate limiting errors, and to generally be more clean and maintainable
 
-I won't be adhering to strict semver. I chose to group a large number of unrelated things into a single project so that I don't have to spend all my time maintaining many small projects. As a result, I probably won't be able to realistically bump minor/major versions every time there is a method signature change in a single function, for example.
+The Nuget utility functions exist because v3 of the Nuget API doesn't natively have the ability to provide the latest working version of a package given a target dotnet version (TFM or Target Framework Moniker). A Microsoft rep said in a github issue comment (https://github.com/NuGet/NuGetGallery/issues/9627#issuecomment-1972187467) that they would implement this functionality, but they don't seem to have ever gotten around to it.
 
-However, I plan on keeping the project well-documented and I also plan on continuing to increase unit test coverage, so hopefully the downsides of my approach will be somewhat mitigated.
+A note on how the method `getLatestNugetPackageVersion` works: it essentially get's all versions via an http call to `https://api.nuget.org/v3-flatcontainer/{package_id}/index.json`, and for each major version starting with the latest and working backwards, it does an http call to the Nuget landing page (`https://www.nuget.org/packages/${packageName}/${packageVersion}`) and checks the "Frameworks" tab for the TFM in question. For example, calling this:
+```TypeScript
+await getLatestNugetPackageVersion('Microsoft.EntityFrameworkCore.Design', 'net8.0')
+```
+
+... will return a 9.x version instead of the previously returned 8.x version because it will get all major versions (10, 9, 8, etc) have accessed the latest 10.x landing page first (i.e. https://www.nuget.org/packages/Microsoft.EntityFrameworkCore.Design/10.0.5) and seen that 'net8.0' was not in the list of frameworks and then tried the latest 9.x landing page (i.e. https://www.nuget.org/packages/Microsoft.EntityFrameworkCore.Design/9.0.14#supportedframeworks-body-tab) and seen that 'net8.0' is in fact there, so it will return that 9.x version instead of continuing to lower versions (in this case, "9.0.14").
+
+## Misc Reminders
+
+### April 2026 Updates
+
+After upgrading to Typescript 6, I had to adjust a couple things:
+- Build versions of tsconfig files needed explicit rootDir and node types reference:
+    ```json
+    "compilerOptions": {
+      //...
+      "rootDir": "./src",
+      //...
+    },
+    "types": [
+      "node"
+    ],
+    ```
+- `tsconfig.cjs.json` needed lib added: `"ES2022"`
+- Removed unneeded deprecated setting from main `tsconfig.json`: `"baseUrl": "./"`
+
+After updating typedoc I got warnings about JSDoc comments for params that didn't exist anymore, so I deleted those. I also started getting a warning about `parallel.ts` related to a comment link to NodeJS `Promise.allSettled` that required adding the following to `typedoc.json`:
+```json
+"externalSymbolLinkMappings": {
+  "typescript": {
+    "PromiseConstructor.allSettled": "#"
+  }
+}
+```
 
 ## Noteworthy Features
 

@@ -7,3 +7,4 @@ test/temp/*
 !test/temp/placeholder.txt
 coverage
 /*.tgz
+scratch

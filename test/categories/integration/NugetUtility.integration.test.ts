@@ -12,10 +12,11 @@ const packages: PackageExpectedVersionInfo[] = [
   {
     packageName: 'Microsoft.EntityFrameworkCore.Design',
     versionMap: {
-      'net5.0': '5',
       'net6.0': '7',
       'net7.0': '7',
-      'net8.0': '8'
+      'net8.0': '9',
+      'net9.0': '9',
+      'net10.0': '10'
     }
   },
   {
@@ -24,7 +25,9 @@ const packages: PackageExpectedVersionInfo[] = [
       'net5.0': '13',
       'net6.0': '13',
       'net7.0': '13',
-      'net8.0': '13'
+      'net8.0': '13',
+      'net9.0': '13',
+      'net10.0': '13'
     }
   }
 ]

@@ -1,19 +1,25 @@
-import axios, { AxiosInstance, AxiosResponse } from 'axios'
 import { DotnetVersion } from './DotnetVersion.js'
 import { TargetFrameworkMoniker, isValidTargetFrameworkMoniker } from './dotnetUtils.js'
 import { ExtendedError, findAllIndexes, getNormalizedError, requireString, sleep, trace } from './generalUtils.js'
 
 type NugetVersionCompatibilityList = { [packageName: string]: { [T in TargetFrameworkMoniker]?: number } }
 
+const FETCH_INIT: RequestInit = {
+  headers: {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'
+  }
+}
+
+// Generate new list with swig task "generateNugetLandingUrls" and check landing pages manually (automated method on all packages and TFMs results in 429 rate limit errors).
 /**
  * List of known compatible major package versions with respect to dotnet framework version.
  */
 export const nugetPackageCompatibilityList: NugetVersionCompatibilityList = {
-  'Microsoft.EntityFrameworkCore': { 'net6.0': 7, 'net7.0': 7, 'net8.0': 8 },
-  'Microsoft.EntityFrameworkCore.Design': { 'net6.0': 7, 'net7.0': 7, 'net8.0': 8 },
-  'Microsoft.EntityFrameworkCore.Relational': { 'net6.0': 7, 'net7.0': 7, 'net8.0': 8 },
-  'Npgsql.EntityFrameworkCore.PostgreSQL': { 'net6.0': 7, 'net7.0': 7, 'net8.0': 8 },
-  'dotnet-ef': { 'net6.0': 7, 'net7.0': 7, 'net8.0': 8 }
+  'Microsoft.EntityFrameworkCore': { 'net6.0': 7, 'net7.0': 7, 'net8.0': 9, 'net9.0': 9, 'net10.0': 10 },
+  'Microsoft.EntityFrameworkCore.Design': { 'net6.0': 7, 'net7.0': 7, 'net8.0': 9, 'net9.0': 9, 'net10.0': 10 },
+  'Microsoft.EntityFrameworkCore.Relational': { 'net6.0': 7, 'net7.0': 7, 'net8.0': 9, 'net9.0': 9, 'net10.0': 10 },
+  'Npgsql.EntityFrameworkCore.PostgreSQL': { 'net6.0': 7, 'net7.0': 7, 'net8.0': 9, 'net9.0': 9, 'net10.0': 10 },
+  'dotnet-ef': { 'net6.0': 7, 'net7.0': 7, 'net8.0': 10, 'net9.0': 10, 'net10.0': 10 }
 }
 
 export interface NugetUtilityDependencies {
@@ -60,6 +66,14 @@ export class NugetUtility {
     return new DotnetVersion(latestVersion).major
   }
 
+  // Helper method with some duplicated functionality from getLatestNugetPackageVersion - using for diagnostics
+  getAllNugetVersions = async (packageName: string): Promise<NugetVersion[]> => {
+    this.validatePackageName(packageName)
+    const allVersionsJson = await this.nugetAccessor.getAllVersionsJson(packageName)
+    const allNugetVersions = this.getAllNugetVersionsFromJson(packageName, allVersionsJson)
+    return allNugetVersions
+  }
+
   /**
    * Get the newest version number for the nuget package that is compatible with the specified .net version. This logic scrapes nuget.org to take a guess. Note that
    * that's all it is - a guess. Nuget doesn't actually know anything about compatibility and is also taking giant guesses based on package transitive dependencies
@@ -67,7 +81,7 @@ export class NugetUtility {
    * the latest version when you add a package unless you specify one, and you won't know if it's compatible until a restore or build command happens. This method is
    * an attempt to at least use the nuget.org guess instead of just using the latest version.
    * @param packageName The nuget package name to evaluate.
-   * @param targetFrameworkMoniker The .net framework version, for example "net6.0" or "net8.0"
+   * @param targetFrameworkMoniker The .net framework version, for example "net8.0" or "net10.0"
    * @returns A version string for the latest nuget package that is compatible with the specified .net framework, or `null` if there wasn't a compatible version found.
    * @throws If the package does not exist.
    * @throws If the nuget API is unreachable.
@@ -185,7 +199,7 @@ export class NugetUtility {
   }
 
   // Does not currently support pre-release versions (they will be ignored)
-  private getLatestMajorVersions(versions: NugetVersion[]): NugetVersion[] {
+  getLatestMajorVersions(versions: NugetVersion[]): NugetVersion[] {
     const dict: { [majorVersion: number]: NugetVersion } = {}
 
     trace('**************')
@@ -214,7 +228,7 @@ export class NugetUtility {
     try {
       parsedJson = JSON.parse(jsonString)
     } catch (error) {
-      throw new Error(`Could not parse Nuget response - invalid JSON string: ${jsonString}`)
+      throw new Error(`Could not parse Nuget response - invalid JSON string: ${jsonString}`, { cause: error })
     }
 
     if (!Array.isArray(parsedJson.versions)) {
@@ -293,77 +307,99 @@ export interface INugetAccessor {
 
 // Important: at one point the API calls were working with PascalCase package ids, but it seems to have been changed to require all lowercase package ids now
 export class NugetAccessor implements INugetAccessor {
-  private axiosInstance: AxiosInstance
-  private readonly MAX_RETRIES = 3
-
-  constructor() {
-    this.axiosInstance = axios.create({
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36' }
-    })
-  }
+  private readonly DEFAULT_NUM_RETRIES = 3
 
   // Template URL: https://api.nuget.org/v3-flatcontainer/{package_id}/index.json
   // Example for EF package: https://api.nuget.org/v3-flatcontainer/microsoft.entityframeworkcore.design/index.json
-  getAllVersionsJson = async (packageName: string, numRetries = this.MAX_RETRIES): Promise<string> => {
+  getAllVersionsJson = async (packageName: string, numRetries = this.DEFAULT_NUM_RETRIES): Promise<string> => {
     const nugetVersionsUrl = NugetUtility.getVersionsJsonUrl(packageName)
+
     trace(`getting all package versions json from url: ${nugetVersionsUrl}`)
-    try {
-      if (numRetries < this.MAX_RETRIES) {
+
+    let lastError: unknown
+
+    // First try PLUS retries
+    for (let attemptNumber = 1; attemptNumber <= numRetries + 1; attemptNumber++) {
+      if (attemptNumber > 1) {
         await sleep(1500)
       }
-      const response: AxiosResponse = await this.axiosInstance.get(nugetVersionsUrl, { responseType: 'text' })
-      return response.data
-    } catch (err: unknown) {
-      if (numRetries > 0) {
-        trace(`error attempting to get json`, err)
-        trace(`trying again - num retries left: ${numRetries - 1}`)
-        return this.getAllVersionsJson(packageName, numRetries - 1)
+      try {
+        const response = await fetch(nugetVersionsUrl, FETCH_INIT)
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status} ${response.statusText}`)
+        }
+        return await response.text()
+      } catch (err: unknown) {
+        lastError = err
+        trace(`error attempting to get json on attempt number ${attemptNumber} - num retries left: ${(numRetries + 1) - attemptNumber}`, getNormalizedError(err))
       }
-      throw new ExtendedError(`Error code attempting to retrieve all package versions: `, getNormalizedError(err))
     }
+
+    const message = `Could not retrieve all package versions for URL ${nugetVersionsUrl} after ${numRetries + 1} attempts - see extended error for last retry error`
+
+    throw new ExtendedError(message, getNormalizedError(lastError))
   }
 
-  // The code to calculate computed framework compatibility is quite complicated and there isn't an API endpoint. Instead of writing an entire app that
+  // The code to calculate computed framework compatibility is complicated and there isn't an API endpoint. Instead of writing an entire app that
   // pulls in the NuGet.Client SDK, I'm just going to grab the html from the nuget.org landing page for the package. For reference, here is the code that computes
   // this for the nuget.org site: https://github.com/NuGet/NuGetGallery/blob/e6a38a882007374b320420645f63cc30f2a93e4d/src/NuGetGallery.Core/Services/AssetFrameworkHelper.cs
-  async getPackageLandingPageHtml(packageName: string, packageVersion: string, numRetries = this.MAX_RETRIES): Promise<string> {
+  async getPackageLandingPageHtml(packageName: string, packageVersion: string, numRetries = this.DEFAULT_NUM_RETRIES): Promise<string> {
     const nugetPackageUrl = NugetUtility.getNugetLandingPageUrl(packageName, packageVersion)
+
     trace(`getting nuget.org landing page html from url: ${nugetPackageUrl}`)
-    try {
-      if (numRetries < this.MAX_RETRIES) {
+
+    let lastError: unknown
+
+    for (let attemptNumber = 1; attemptNumber <= numRetries + 1; attemptNumber++) {
+      if (attemptNumber > 1) {
         await sleep(1500)
       }
-      const response: AxiosResponse = await this.axiosInstance.get(nugetPackageUrl, { responseType: 'text' })
-      return response.data
-    } catch (err: unknown) {
-      if (numRetries > 0) {
-        trace(`error attempting to get landing page html`, err)
-        trace(`trying again - num retries left: ${numRetries - 1}`)
-        return this.getPackageLandingPageHtml(packageName, packageVersion, numRetries - 1)
+      try {
+        const response = await fetch(nugetPackageUrl, FETCH_INIT)
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status} ${response.statusText}`)
+        }
+        return await response.text()
+      } catch (err: unknown) {
+        lastError = err
+        trace(`error attempting to get landing page html on attempt number ${attemptNumber} - num retries left: ${(numRetries + 1) - attemptNumber}`, getNormalizedError(err))
       }
-      throw new ExtendedError(`Error accessing ${nugetPackageUrl}: `, getNormalizedError(err))
     }
+
+    const message = `Could not retrieve landing page html for URL ${nugetPackageUrl} after ${numRetries + 1} attempts - see extended error for last retry error`
+
+    throw new ExtendedError(message, getNormalizedError(lastError))
   }
 
   // Template URL: https://api.nuget.org/v3-flatcontainer/{package_id}/{version}/{package_id}.nuspec
   // Example for EF package version 7.0.14: https://api.nuget.org/v3-flatcontainer/microsoft.entityframeworkcore.design/7.0.14/microsoft.entityframeworkcore.design.nuspec
-  async getNuspec(packageName: string, versionString: string, numRetries = this.MAX_RETRIES): Promise<string> {
+  async getNuspec(packageName: string, versionString: string, numRetries = this.DEFAULT_NUM_RETRIES): Promise<string> {
     const nugetNuspecUrl = `https://api.nuget.org/v3-flatcontainer/${packageName}/${versionString}/${packageName}.nuspec`.toLocaleLowerCase()
+
     trace(`getting nuspec file from url: ${nugetNuspecUrl}`)
-    try {
-      if (numRetries < this.MAX_RETRIES) {
+
+    let lastError: unknown
+
+    // First try PLUS retries
+    for (let attemptNumber = 1; attemptNumber <= numRetries + 1; attemptNumber++) {
+      if (attemptNumber > 1) {
         await sleep(1500)
       }
-      const response: AxiosResponse = await this.axiosInstance.get(nugetNuspecUrl, { responseType: 'text' })
-      return response.data
-    } catch (err: unknown) {
-      if (numRetries > 0) {
-        trace(`error attempting to get nuspec ${nugetNuspecUrl}`, err)
-        trace(`trying again - num retries left: ${numRetries - 1}`)
-        return this.getNuspec(packageName, versionString, numRetries - 1)
+      try {
+        const response = await fetch(nugetNuspecUrl, FETCH_INIT)
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status} ${response.statusText}`)
+        }
+        return await response.text()
+      } catch (err: unknown) {
+        lastError = err
+        trace(`error attempting to get json on attempt number ${attemptNumber} - num retries left: ${(numRetries + 1) - attemptNumber}`, getNormalizedError(err))
       }
-      throw new ExtendedError(`Error accessing ${nugetNuspecUrl}: `, getNormalizedError(err))
     }
+
+    const message = `Could not retrieve nuspec for URL ${nugetNuspecUrl} after ${numRetries + 1} attempts - see extended error for last retry error`
+
+    throw new ExtendedError(message, getNormalizedError(lastError))
   }
 }
 

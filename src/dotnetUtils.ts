@@ -456,8 +456,8 @@ export function getDotnetCoreSdkVersions() {
  * Simple helper method to convert an SDK version to the TFM (target framework moniker). Only supporting new dotnet core versions.
  */
 export function sdkVersionToTfm(sdkVersion: number): TargetFrameworkMoniker {
-  if (typeof sdkVersion !== 'number' || sdkVersion < 5 || sdkVersion > 8) {
-    throw new Error(`Invalid SDK version: ${sdkVersion} (only supports version >= 5 and <= 8)`)
+  if (typeof sdkVersion !== 'number' || sdkVersion < 5 || sdkVersion > 10) {
+    throw new Error(`Invalid SDK version: ${sdkVersion} (only supports version >= 5 and <= 10)`)
   }
   return `net${sdkVersion}.0` as TargetFrameworkMoniker
 }

@@ -1,6 +1,6 @@
 {
   "name": "@mikeyt23/node-cli-utils",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Stuff I wish was in the Node.js standard library - along with other misc utility functions",
   "author": "Mike Thompson",
   "license": "MIT",

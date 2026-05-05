@@ -8,3 +8,4 @@ test/temp/*
 coverage
 /*.tgz
 scratch
+orphanProtection.log

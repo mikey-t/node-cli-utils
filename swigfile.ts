@@ -14,6 +14,8 @@ import { nugetPackageCompatibilityList, NugetUtility } from './src/NugetUtility.
 
 config.traceEnabled = false
 
+const nodePath = process.execPath
+
 // Using direct paths to node_modules to skip the startup delay of using npm
 const tscPath = './node_modules/typescript/lib/tsc.js'
 const eslintPath = './node_modules/eslint/bin/eslint.js'
@@ -30,7 +32,7 @@ export const buildEsmOnly = series(cleanDist, buildEsm)
 export const buildCjsOnly = series(cleanDist, buildCjs)
 
 export async function lint() {
-  await spawnAsync('node', [eslintPath, '--ext', '.ts', './src', './test', './swigfile.ts'])
+  await spawnAsync(nodePath, [eslintPath, '--ext', '.ts', './src', './test', './swigfile.ts'])
 }
 
 // See DevNotes.md for documentation and examples
@@ -92,15 +94,15 @@ export async function test(fullOverride = false) {
 
   if (isWatch) {
     trace('args:', args)
-    if ((await spawnAsyncLongRunning('node', args)).code !== 0) {
+    if ((await spawnAsyncLongRunning(nodePath, args)).code !== 0) {
       throw new Error('Tests failed')
     }
   } else {
     if (isCoverage) {
-      args.unshift(c8Path, 'node')
+      args.unshift(c8Path, nodePath)
     }
     trace('args:', args)
-    if ((await spawnAsync('node', args, isCoverage ? { env: { ...process.env, NODE_V8_COVERAGE: './coverage' } } : {})).code !== 0) {
+    if ((await spawnAsync(nodePath, args, isCoverage ? { env: { ...process.env, NODE_V8_COVERAGE: './coverage' } } : {})).code !== 0) {
       throw new Error('Tests failed')
     }
     if (isCoverage) {
@@ -147,11 +149,11 @@ export const bashIntoSonar = series(
 )
 
 export async function watch() {
-  await spawnAsyncLongRunning('node', [tscPath, '--p', 'tsconfig.esm.json', '--watch'])
+  await spawnAsyncLongRunning(nodePath, [tscPath, '--p', 'tsconfig.esm.json', '--watch'])
 }
 
 export async function watchCjs() {
-  await spawnAsyncLongRunning('node', [tscPath, '--p', 'tsconfig.cjs.json', '--watch'])
+  await spawnAsyncLongRunning(nodePath, [tscPath, '--p', 'tsconfig.cjs.json', '--watch'])
 }
 
 export const publishCheck = series(
@@ -184,7 +186,7 @@ export async function genDocs() {
   if (process.argv[2] === 'genDocs') {
     log(`${Emoji.Warning} This does not publish the docs. If you want to both build and publish docs with one command, run this instead: swig publishDocs`)
   }
-  await spawnAsync('node', [typedocPath])
+  await spawnAsync(nodePath, [typedocPath])
 }
 
 export async function sonarHealth() {
@@ -223,7 +225,7 @@ async function syncEnvFile() {
 async function buildWithTsconfig(tsconfigFlavor: 'esm' | 'cjs') {
   const tsconfigName = `tsconfig.${tsconfigFlavor}.json`
   log(`Building with ${tsconfigName}`)
-  await spawnAsync('node', [tscPath, '--p', tsconfigName])
+  await spawnAsync(nodePath, [tscPath, '--p', tsconfigName])
 }
 
 async function buildEsm() {

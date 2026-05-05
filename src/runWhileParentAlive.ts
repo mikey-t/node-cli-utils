@@ -25,8 +25,8 @@ export function trace(message?: unknown, ...optionalParams: unknown[]) {
 }
 
 function logToFile(message: string) {
-  fs.appendFileSync(config.orphanProtectionLoggingPath, `${getLogPrefix()}${message}` + !message?.endsWith('\n') ? '\n' : '')
-
+  const logLine = `${getLogPrefix()}${message}` + (!message?.endsWith('\n') ? '\n' : '')
+  fs.appendFileSync(config.orphanProtectionLoggingPath, logLine)
 }
 
 function traceAndLog(message: string, isDevTrace = false) {

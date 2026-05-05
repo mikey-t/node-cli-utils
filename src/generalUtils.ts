@@ -1111,14 +1111,59 @@ export function hasWhitespace(str: string): boolean {
   return /\s/.test(str)
 }
 
+// Currently only used by whichInternal, which needs to be re-worked
 export function stripShellMetaCharacters(input: string): string {
   const metaCharacters = [
-    '\\', '`', '$', '"', "'", '<', '>', '|', ';', ' ',
-    '&', '(', ')', '[', ']', '{', '}', '?', '*', '#', '~', '^'
+    '\\', '`', '$', '"', "'", '<', '>', '|', ';', ' ', '&', '(', ')', '[', ']', '{', '}', '?', '*', '#', '~', '^', '\n', '\r'
   ]
   const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const regex = new RegExp(`[${metaCharacters.map(escapeRegex).join('')}]`, 'g')
   return input.replace(regex, '')
+}
+
+const unquotedCmdCommandPattern = /^[a-zA-Z0-9._:\\/-]+(?:\.exe|\.cmd|\.bat)?$/i
+const quotedCmdCommandPattern = /^"[a-zA-Z0-9._:\\/-][a-zA-Z0-9._:\\/ -]*(?:\.exe|\.cmd|\.bat)?"$/i
+
+export function isNonEmptyDoubleQuotedString(value: string): boolean {
+  return /^"[^"]*"$/.test(value)
+}
+
+export function assertReasonablySafeCmdCommand(command: string): void {
+  if (command.length === 0) {
+    throw new Error('Cmd.exe command is empty')
+  }
+
+  const hasQuotes = command.includes('"')
+
+  if (hasQuotes) {
+    if (!quotedCmdCommandPattern.test(command)) {
+      throw new Error('Quoted cmd.exe command must start and end with one double quote, contain no other double quotes, and only contain safe path characters')
+    }
+    return
+  }
+
+  if (!unquotedCmdCommandPattern.test(command)) {
+    throw new Error(`Cmd.exe command has unexpected format: ${command}`)
+  }
+}
+
+const unsafeCmdArgChars = /[&|<>^%!"\r\n]/
+
+export function assertSafeCmdArg(arg: string): void {
+  if (arg.length === 0) {
+    throw new Error('Empty cmd.exe arg is not allowed')
+  }
+
+  if (unsafeCmdArgChars.test(arg)) {
+    throw new Error(`Unsafe cmd.exe argument: ${arg}`)
+  }
+}
+
+export function assertSafeCmdArgs(args?: string[]): void {
+  if (!args || args.length === 0) return
+  for (const arg of args) {
+    assertSafeCmdArg(arg)
+  }
 }
 
 export enum Emoji {

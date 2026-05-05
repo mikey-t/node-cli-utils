@@ -51,23 +51,40 @@ New source files need to be referenced in `c8rc.json` to get code coverage analy
 
 ## Local Npm Package Testing
 
-TODO: update this section after experimenting with new tools/processes.
+For testing live version of this package in another project, use pnpm link protocol.
 
-Steps to link:
+From consuming project, run:
+```bash
+pnpm link ../node-cli-utils
+```
 
-- Check what is already linked: `npm ls --link=true`
-- Within publishing package:
-    - `npm link`
-    - `swig build` OR `swig watch`
-- Within consuming project:
-    - Ensure you have already added the dependency normally (`npm i -D @mikeyt23/node-cli-utils`) and that the version semver notation allows the newest version (perhaps change version to "*" if testing a new major version)
-    - `npm link @mikeyt23/node-cli-utils`
+This will result in pnpm adding something like this section to package.json:
 
-Steps to unlink:
+```
+"pnpm": {
+  "overrides": {
+    "@mikeyt23/node-cli-utils": "link:../node-cli-utils"
+  }
+}
+```
 
-- Within consuming package: `npm unlink @mikeyt23/node-cli-utils`
-- Within publishing package: `npm unlink`
-- Verify it's no longer linked: `npm ls --link=true`
+Then run `pnpm install` (unsure if this is supposed to be required - currently it appears to be).
+
+If making changes and testing in other project, you can use `swig watch`. After done testing, remove link by running:
+
+```bash
+pnpm unlink @mikeyt23/node-cli-utils
+```
+
+Run `pnpm install` after unlinking to ensure it points back to normal non-overridden version.
+
+Alternatively, there might be some circumstances where you might need to update the reference in package.json directly like this (remember to run `pnpm install` after making changes to dependency line in package.json):
+
+```json
+dependencies: {
+  "@mikeyt23/node-cli-utils": "link:..\\node-cli-utils"
+}
+```
 
 ## Unit Test Notes
 

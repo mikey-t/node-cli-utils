@@ -5,7 +5,7 @@ import http from 'node:http'
 import https from 'node:https'
 import path from 'node:path'
 import { config } from './NodeCliUtilsConfig.js'
-import { ExtendedError, SimpleSpawnError, SimpleSpawnResult, SpawnError, SpawnOptionsWithThrow, SpawnResult, StringKeyedDictionary, WhichResult, isErrorEnoent, isPlatformWindows, log, requireString, requireValidPath, simpleSpawnAsync, sortDictionaryByKeyAsc, spawnAsync, stringToNonEmptyLines, stripShellMetaCharacters, trace } from './generalUtils.js'
+import { ExtendedError, SimpleSpawnError, SimpleSpawnResult, SpawnError, SpawnOptionsWithThrow, SpawnResult, StringKeyedDictionary, WhichResult, assertSafeCmdArgs, assertReasonablySafeCmdCommand, isErrorEnoent, isPlatformWindows, log, requireString, requireValidPath, simpleSpawnAsync, sortDictionaryByKeyAsc, spawnAsync, stringToNonEmptyLines, stripShellMetaCharacters, trace } from './generalUtils.js'
 
 const isCommonJS = typeof require === "function" && typeof module === "object" && module.exports
 const isEsm = !isCommonJS
@@ -84,7 +84,28 @@ export interface SpawnOptionsInternal extends SpawnOptionsWithThrow {
   isLongRunning: boolean
 }
 
+function shouldValidateAsCmd(options?: Partial<SpawnOptionsInternal>): boolean {
+  const isWindows = isPlatformWindows()
+
+  if (!isWindows) return false
+
+  const defaultShellIsCmd = !process.env.COMSPEC || process.env.COMSPEC.toLowerCase().endsWith('cmd.exe')
+
+  // When "isLongRunning" option is passed, cmd is always used because of the middle layer wrapper workaround
+  if (options?.isLongRunning) return true
+
+  // Specific shell not specified and shell simply "true" or cmd explicitly passed
+  if ((options?.shell === true && defaultShellIsCmd) || options?.shell === 'cmd' || options?.shell === 'cmd.exe') return true
+
+  return false
+}
+
 export async function spawnAsyncInternal(command: string, args: string[], options?: Partial<SpawnOptionsInternal>): Promise<SpawnResult> {
+  if (shouldValidateAsCmd(options)) {
+    assertReasonablySafeCmdCommand(command)
+    assertSafeCmdArgs(args)
+  }
+
   const mergedOptions = setDefaultsAndMergeOptions(options)
   const logPrefix = `[${command} ${args.join(' ')}] `
 
@@ -172,7 +193,9 @@ async function getWorkaroundScriptPath(command: string, args?: string[], options
     workaroundScriptPath = path.resolve('dist/esm', spawnWorkaroundScriptName)
   }
 
-  if (options?.isLongRunning && isPlatformWindows() && !(command === 'node' && args && args[0]?.endsWith(spawnWorkaroundScriptName))) {
+  const commandIsNode = command === 'node' || command.replace('.exe', '').endsWith('node')
+
+  if (options?.isLongRunning && isPlatformWindows() && !(commandIsNode && args && args.length > 1 && args[1]?.endsWith(spawnWorkaroundScriptName))) {
     return workaroundScriptPath
   }
 
@@ -196,6 +219,7 @@ async function spawnWithKeepaliveWorkaround(logPrefix: string, workaroundScriptP
   const argsSerialized = args.length > 0 ? [Buffer.from(JSON.stringify(args)).toString('base64')] : []
 
   const workaroundArgs = [
+    '--no-deprecation',
     workaroundScriptPath,
     loggingEnabledString,
     traceEnabledString,
@@ -204,7 +228,7 @@ async function spawnWithKeepaliveWorkaround(logPrefix: string, workaroundScriptP
     ...(argsSerialized)
   ]
 
-  return await spawnAsync('node', workaroundArgs, { ...options, stdio: 'inherit', shell: true })
+  return await spawnAsync(process.execPath, workaroundArgs, { ...options, stdio: 'inherit', shell: 'cmd.exe' })
 }
 
 function getInitialSpawnResult(options?: SpawnOptionsInternal): SpawnResult {
@@ -284,6 +308,11 @@ export function simpleSpawnSyncInternal(command: string, args?: string[], throwO
   requireValidPath('cwd', cwd)
 
   const result = spawnSync(command, args ?? [], { encoding: 'utf-8', shell: useCmd ? 'cmd.exe' : false, cwd: cwd })
+
+  if (useCmd) {
+    assertReasonablySafeCmdCommand(command)
+    assertSafeCmdArgs(args)
+  }
 
   const spawnResult: SimpleSpawnResult = {
     code: result.status ?? 1,

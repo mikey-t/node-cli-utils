@@ -45,3 +45,10 @@ await spawnAsyncLongRunning(
 - Removed all Volta references.
 - Removed axios dependency.
 - Updated dotnetUtils with new SDK versions and TFMs.
+
+## 2.1.2
+
+- Added command and arg validation for cmd spawn calls.
+- Utilize process.execPath when spawning node.
+- Added `--no-deprecation` option to spawn keep alive wrapper call to prevent node warning messages.
+- Fixed orphan protection logging - no longer logging just blank lines.

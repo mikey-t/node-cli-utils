@@ -52,3 +52,8 @@ await spawnAsyncLongRunning(
 - Utilize process.execPath when spawning node.
 - Added `--no-deprecation` option to spawn keep alive wrapper call to prevent node warning messages.
 - Fixed orphan protection logging - no longer logging just blank lines.
+
+## 2.1.3
+
+- Added additional options to emptyDirectory method for setting the allowed base directory and asking for confirmation.
+- Added isSubdirectorySync method.

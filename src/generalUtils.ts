@@ -3,7 +3,6 @@ import * as net from 'net'
 import { SpawnOptions } from 'node:child_process'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
-import { platform } from 'node:os'
 import path, { resolve } from 'node:path'
 import * as readline from 'readline'
 import { config } from './NodeCliUtilsConfig.js'
@@ -225,55 +224,107 @@ export async function mkdirpSync(dir: string) {
   fs.mkdirSync(dir, { recursive: true })
 }
 
+/** Options for {@link emptyDirectory} method. */
 export interface EmptyDirectoryOptions {
   /** An optional array of file and directory names to skip, but only at the top level of the directoryToEmpty. */
   fileAndDirectoryNamesToSkip: string[]
+  /** Defaults to `false`. This value is passed through to the NodeJS `rm` method. */
   force: boolean
+  /** Defaults to `false`. Pass `true` if you want an exception thrown instead of an empty directory created when the `directoryToEmpty` param passed to {@link emptyDirectory} does not exist. */
   throwIfNotExists: boolean
+  /** Allow operation on subdirectories below the specified base directory instead of using the current working directory by default. */
+  allowedBaseDirectory: string | undefined
+  /** Defaults to `false`. Good idea to set to `true` if using {@link allowedBaseDirectory} and/or full automation isn't needed.  */
+  askForConfirmation: boolean
 }
 
 /**
- * Empties a directory of all files and subdirectories. Optionally skips files and directories at the top level. For other
- * options, see {@link EmptyDirectoryOptions}.
+ * Empties a directory of all files and subdirectories. Optionally skips files and directories at the top level. Creates an
+ * empty directory if it doesn't exist and {@link EmptyDirectoryOptions.throwIfNotExists}` was not set to `true`. Only allows
+ * emptying directories that are subdirectories of the current working directory unless another directory is passed in the
+ * optional {@link EmptyDirectoryOptions.allowedBaseDirectory} param. See {@link EmptyDirectoryOptions}.
  * @param directoryToEmpty The directory to empty.
  * @param options See {@link EmptyDirectoryOptions}.
  */
-export async function emptyDirectory(directoryToEmpty: string, options?: Partial<EmptyDirectoryOptions>) {
+export async function emptyDirectory(directoryToEmpty: string, options?: Partial<EmptyDirectoryOptions>): Promise<void> {
   requireString('directoryToEmpty', directoryToEmpty)
 
-  const defaultOptions: EmptyDirectoryOptions = { fileAndDirectoryNamesToSkip: [], force: false, throwIfNotExists: false }
+  const defaultOptions: EmptyDirectoryOptions = {
+    fileAndDirectoryNamesToSkip: [],
+    force: false,
+    throwIfNotExists: false,
+    allowedBaseDirectory: undefined,
+    askForConfirmation: false
+  }
   const mergedOptions: EmptyDirectoryOptions = { ...defaultOptions, ...options }
 
-  if (!fs.existsSync(directoryToEmpty)) {
-    if (mergedOptions.throwIfNotExists) {
-      throw new Error('Directory does not exist and throwIfNotExists was set to true')
-    }
-    trace(`directoryToEmpty does not exist - creating directory ${directoryToEmpty}`)
-    await mkdirp(directoryToEmpty)
-    return
-  }
+  const directoryToEmptyAbsolute = path.resolve(directoryToEmpty)
 
-  if (!fs.lstatSync(directoryToEmpty).isDirectory()) {
-    throw new Error(`directoryToEmpty is not a directory: ${directoryToEmpty}`)
-  }
-
-  // Add some guardrails to prevent accidentally emptying the wrong directory
-  const absolutePath = path.resolve(directoryToEmpty)
-  trace(`emptying directory: ${absolutePath}`)
-  if (!absolutePath.startsWith(process.cwd())) {
-    throw new Error(`directoryToEmpty must be a child of the current working directory: ${directoryToEmpty}`)
-  }
-
-  if (absolutePath === process.cwd()) {
-    throw new Error(`directoryToEmpty cannot be the current working directory: ${directoryToEmpty}`)
-  }
-
-  const dir = await fsp.opendir(directoryToEmpty, { encoding: 'utf-8' })
+  let allowedBaseDirectoryAbsolute: string | undefined
 
   if (mergedOptions.fileAndDirectoryNamesToSkip && !Array.isArray(mergedOptions.fileAndDirectoryNamesToSkip)) {
     throw new Error('fileAndDirectoryNamesToSkip must be an array')
   }
 
+  if (mergedOptions.allowedBaseDirectory) {
+    requireString('allowedBaseDirectory', mergedOptions.allowedBaseDirectory, 'If allowedBaseDirectory option is used, it must be a non-empty string')
+
+    allowedBaseDirectoryAbsolute = path.resolve(mergedOptions.allowedBaseDirectory)
+
+    if (!fs.existsSync(allowedBaseDirectoryAbsolute)) {
+      throw new Error(`The provided 'allowedBaseDirectory' does not exist: ${mergedOptions.allowedBaseDirectory}`)
+    }
+
+    if (isSameDirectory(directoryToEmptyAbsolute, allowedBaseDirectoryAbsolute)) {
+      throw new Error(`The allowedBaseDirectory cannot be the same as directoryToEmpty - it must be a parent directory`)
+    }
+  }
+
+  if (!fs.existsSync(directoryToEmptyAbsolute)) {
+    if (mergedOptions.throwIfNotExists) {
+      throw new Error(`Directory does not exist and throwIfNotExists was set to true`)
+    }
+    trace(`directoryToEmpty does not exist - creating directory ${directoryToEmptyAbsolute}`)
+    await mkdirp(directoryToEmptyAbsolute)
+    return
+  }
+
+  if (!isDirectorySync(directoryToEmptyAbsolute)) {
+    throw new Error(`directoryToEmpty is not a directory: ${directoryToEmptyAbsolute}`)
+  }
+
+  // Guardrails to prevent accidentally emptying the wrong directory (under cwd or allowedBaseDirectory if passed)
+  const cwd = process.cwd()
+  if (!allowedBaseDirectoryAbsolute && !isSubdirectorySync(cwd, directoryToEmptyAbsolute)) {
+    throw new Error(`directoryToEmpty (${directoryToEmptyAbsolute}) must be a subdirectory of the current working directory (${cwd})`)
+  }
+  else if (allowedBaseDirectoryAbsolute && !isSubdirectorySync(allowedBaseDirectoryAbsolute, directoryToEmptyAbsolute)) {
+    throw new Error(`directoryToEmpty (${directoryToEmptyAbsolute}) must be a subdirectory of allowedBaseDirectory (${allowedBaseDirectoryAbsolute})`)
+  }
+
+  const dirToEmptyNormalized = isPlatformWindows() ? directoryToEmptyAbsolute.toLowerCase() : directoryToEmptyAbsolute
+  if (isPlatformWindows()) {
+    if (dirToEmptyNormalized === 'c:\\' || dirToEmptyNormalized.startsWith('c:\\windows')) {
+      throw new Error(`cannot empty directory ${directoryToEmptyAbsolute}`)
+    }
+  } else {
+    if (dirToEmptyNormalized === '/') {
+      throw new Error(`cannot empty directory ${directoryToEmptyAbsolute}`)
+    }
+  }
+
+  if (mergedOptions.askForConfirmation) {
+    if (await getConfirmation(`${Emoji.Warning} Are you sure you want to empty the directory ${directoryToEmptyAbsolute}?`)) {
+      trace('confirmed - continuing to empty directory')
+    } else {
+      trace('empty directory operation canceled - returning')
+      return
+    }
+  }
+
+  trace(`emptying directory: ${directoryToEmptyAbsolute}`)
+
+  const dir = await fsp.opendir(directoryToEmptyAbsolute, { encoding: 'utf-8' })
   let dirEntry = await dir.read()
 
   while (dirEntry) {
@@ -282,7 +333,7 @@ export async function emptyDirectory(directoryToEmpty: string, options?: Partial
       continue
     }
 
-    const direntPath = path.join(directoryToEmpty, dirEntry.name)
+    const direntPath = path.join(directoryToEmptyAbsolute, dirEntry.name)
 
     if (dirEntry.isDirectory()) {
       await fsp.rm(direntPath, { recursive: true, force: mergedOptions.force })
@@ -294,6 +345,23 @@ export async function emptyDirectory(directoryToEmpty: string, options?: Partial
   }
 
   await dir.close()
+}
+
+/**
+ * Check if strings are the same directory. Directories don't have to exist - `path.resolve` is utilized.
+ * 
+ * @returns `true` if dir1 and dir2 resolved paths are the same, `false` otherwise.
+ */
+export function isSameDirectory(dir1: string, dir2: string): boolean {
+  requireString('dir1', dir1)
+  requireString('dir2', dir2)
+
+  const resolved1 = path.resolve(dir1)
+  const resolved2 = path.resolve(dir2)
+
+  return isPlatformWindows()
+    ? resolved1.toLowerCase() === resolved2.toLowerCase()
+    : resolved1 === resolved2
 }
 
 export interface CopyDirectoryOptions {
@@ -355,10 +423,11 @@ export async function copyDirectoryContents(sourceDirectory: string, destination
  * Helper method to validate that a non-falsy and non-empty value is provided for a parameter that should be a string.
  * @param paramName The name of the parameter to be used in the error message
  * @param paramValue The value of the parameter
+ * @param errorMessage Optional error message to use in error
  */
-export function requireString(paramName: string, paramValue: string) {
+export function requireString(paramName: string, paramValue: string, errorMessage?: string) {
   if (paramValue === undefined || paramValue === null || paramValue === '' || typeof paramValue !== 'string' || paramValue.trim() === '') {
-    throw new Error(`Required param '${paramName}' is missing`)
+    throw new Error(errorMessage || `Required param '${paramName}' is missing`)
   }
 }
 
@@ -496,18 +565,18 @@ export async function simpleSpawnAsync(command: string, args?: string[], options
 }
 
 /**
- * @returns `true` if platform() is 'win32', `false` otherwise
+ * @returns `true` if `process.platform` is 'win32', `false` otherwise
  */
 export function isPlatformWindows() {
-  return platform() === 'win32'
+  return process.platform === 'win32'
 }
 
 /**
  * 
- * @returns `true` if platform() is 'darwin', `false` otherwise
+ * @returns `true` if `process.platform` is 'darwin', `false` otherwise
  */
 export function isPlatformMac() {
-  return platform() === 'darwin'
+  return process.platform === 'darwin'
 }
 
 /**
@@ -902,16 +971,12 @@ export function getHostname(url: string): string {
   }
 }
 
+/** Simple wrapper of fsp.stat(thePath).isDirectory(). No extra check for whether it's a symbolic link (returns true if it is). */
 export async function isDirectory(path: string): Promise<boolean> {
-  if (!fs.existsSync(path)) {
-    trace(`isDirectory returning false because path does not exist`)
-    return false
-  }
   try {
-    const stats = await fsp.stat(path)
-    return stats.isDirectory()
-  } catch (err) {
-    trace('error checking idDirectory (returning false)', err)
+    // Note that we don't check if path exists first because it'll throw ENOENT if it doesn't
+    return (await fsp.stat(path)).isDirectory()
+  } catch {
     return false
   }
 }
@@ -924,6 +989,29 @@ export function isDirectorySync(path: string): boolean {
     trace('error checking idDirectory (returning false)', err)
     return false
   }
+}
+
+export function isSubdirectorySync(parent: string, child: string): boolean {
+  const parentReal = fs.realpathSync.native(parent)
+  const childReal = fs.realpathSync.native(child)
+
+  const normalizedParent =
+    process.platform === 'win32'
+      ? parentReal.toLowerCase()
+      : parentReal
+
+  const normalizedChild =
+    process.platform === 'win32'
+      ? childReal.toLowerCase()
+      : childReal
+
+  const relative = path.relative(normalizedParent, normalizedChild)
+
+  return (
+    relative !== '' &&
+    !relative.startsWith('..') &&
+    !path.isAbsolute(relative)
+  )
 }
 
 export type PlatformCode = 'win' | 'linux' | 'mac'
@@ -942,7 +1030,7 @@ export function getPlatformCode(): PlatformCode {
   if (isPlatformLinux()) {
     return 'linux'
   }
-  throw new Error('unrecognized platform: ' + platform())
+  throw new Error('unrecognized platform: ' + process.platform)
 }
 
 /**
